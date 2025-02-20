@@ -1,0 +1,21 @@
+ProductId,Name,Category,Description,Price,Stock,Rating,Brand
+1,iPhone15,Electronics,Latest smartphone with advanced camera and powerful processor,999,100,4.8,Apple
+2,GalaxyS24,Electronics,Flagship Android phone with stunning display and innovative features,899,80,4.7,Samsung
+3,AirPodsPro,Electronics,Premium wireless earbuds with noise cancellation and excellent sound quality,249,150,4.9,Apple
+4,MacBookPro,Electronics,High-performance laptop with powerful processor and stunning Retina display,1999,50,4.6,Apple
+5,PlayStation5,Electronics,Next-gen gaming console with powerful hardware and exclusive games,499,70,4.8,Sony
+6,XboxSeriesX,Electronics,Powerful gaming console with 4K gaming capabilities and exclusive titles,499,60,4.7,Microsoft
+7,SmartWatch,Wearables,"Fitness tracker with heart rate monitoring, GPS, and smart notifications",199,120,4.5,Fitbit
+8,CoffeeMaker,Kitchen,High-quality coffee maker with various brewing options and a sleek design,129,80,4.3,Breville
+9,Blender,Kitchen,"Powerful blender for smoothies, juices, and soups",99,100,4.4,Ninja
+10,Microwave,Kitchen,Compact microwave oven with various cooking options and quick defrost,79,150,4.2,Samsung
+11,Refrigerator,Appliances,Large-capacity refrigerator with French doors and ice maker,1499,30,4.6,LG
+12,WashingMachine,Appliances,High-efficiency washing machine with various wash cycles and large capacity,799,40,4.3,Samsung
+13,Dishwasher,Appliances,Energy-efficient dishwasher with multiple wash cycles and quiet operation,599,50,4.5,Bosch
+14,AirPurifier,Home,Removes pollutants and allergens from the air for cleaner indoor air quality,199,80,4.2,Coway
+15,VacuumCleaner,Home,Powerful cordless vacuum cleaner with strong suction and versatile attachments,399,70,4.6,Dyson
+16,SmartTV,Electronics,"Large screen smart TV with 4K resolution, HDR support, and streaming apps",599,60,4.7,Samsung
+17,ElectricScooter,Transportation,Convenient and eco-friendly transportation for short commutes,499,50,4.5,Razor
+18,Bicycle,Sports,High-quality bicycle for recreational riding and commuting,399,80,4.3,Trek
+19,RunningShoes,Sports,Comfortable and supportive running shoes for all levels of runners,129,100,4.4,Nike
+20,YogaMat,Sports,Non-slip yoga mat for comfortable and safe yoga practice,49,150,4.2,Manduka
