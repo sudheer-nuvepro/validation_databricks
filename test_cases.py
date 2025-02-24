@@ -107,51 +107,49 @@ class Activity:
         self.actual_products_spark_df, self.actual_orders_spark_df, self.actual_orderdetails_spark_df = None,None,None
         self.actual_final_order_details_spark_df = None
         self.expected_final_order_details_spark_df = None
-        self.resource_group_name = "Test"
-        self.workspace_name = "demoworkspace"
         
         # Ensure the file exists
-    # def get_databricks_http_path(workspace_url, databricks_token):
-    #     databricks_host = workspace_url  # Directly use the workspace URL
+    def get_databricks_http_path(workspace_url, databricks_token):
+        databricks_host = workspace_url  # Directly use the workspace URL
 
-    #     # Get SQL Warehouses from Databricks
-    #     sql_endpoint_url = f"https://{databricks_host}/api/2.0/sql/warehouses"
+        # Get SQL Warehouses from Databricks
+        sql_endpoint_url = f"{databricks_host}/api/2.0/sql/warehouses"
 
-    #     headers = {
-    #         "Authorization": f"Bearer {databricks_token}",
-    #         "Content-Type": "application/json"
-    #     }
+        headers = {
+            "Authorization": f"Bearer {databricks_token}",
+            "Content-Type": "application/json"
+        }
 
-    #     response = requests.get(sql_endpoint_url, headers=headers)
+        response = requests.get(sql_endpoint_url, headers=headers)
 
-    #     if response.status_code != 200:
-    #         raise Exception(f"Failed to retrieve SQL Warehouses: {response.text}")
+        if response.status_code != 200:
+            raise Exception(f"Failed to retrieve SQL Warehouses: {response.text}")
 
-    #     warehouses = response.json().get("warehouses", [])
+        warehouses = response.json().get("warehouses", [])
         
-    #     if not warehouses:
-    #         raise Exception("No SQL Warehouses found in Databricks.")
+        if not warehouses:
+            raise Exception("No SQL Warehouses found in Databricks.")
 
-    #     # Selecting the first available warehouse
-    #     warehouse = warehouses[0]  
-    #     http_path = warehouse["odbc_params"]["path"]
+        # Selecting the first available warehouse
+        warehouse = warehouses[0]  
+        http_path = warehouse["odbc_params"]["path"]
 
-    #     return databricks_host, http_path
+        return databricks_host, http_path
 
 
-    # def get_databricks_connection(workspace_url, databricks_http_path, access_token):
-    #     # Establish connection
-    #     conn = sql.connect(
-    #         server_hostname=workspace_url,
-    #         http_path=databricks_http_path,
-    #         access_token=access_token
-    #     )
+    def get_databricks_connection(workspace_url, databricks_http_path, access_token):
+        # Establish connection
+        conn = sql.connect(
+            server_hostname=workspace_url,
+            http_path=databricks_http_path,
+            access_token=access_token
+        )
 
-    #     return conn
+        return conn
 
 
     # # Retrieve Databricks credentials
-    # workspace_url, databricks_token = solution_script.databricks_details()
+    # workspace_url, databricks_token = main_script.databricks_details()
 
     # # Get Databricks Host and HTTP Path
     # databricks_host, http_path = get_databricks_http_path(workspace_url, databricks_token)
@@ -608,12 +606,14 @@ class Activity:
         ref_if_failure_or_exception = "N/A"
         test_passed = False
         
-        try:    
-            self.expected_connection  = self.conn
-            
+        try:
+            global expected_connection
+            workspaceurl ,access_token = main_script.databricks_details()
+            databricks_host, http_path = Activity.get_databricks_http_path(workspaceurl, access_token)          
+            expected_connection  = Activity.get_databricks_connection(workspaceurl, http_path, access_token) 
             check_table_query = "SHOW TABLES LIKE 'ORDER_DETAILS'"
 
-            with self.expected_connection.cursor() as cursor:
+            with expected_connection.cursor() as cursor:
                 cursor.execute(check_table_query)
                 table_exists = cursor.fetchall()
                                  
@@ -659,7 +659,7 @@ class Activity:
         try:
             check_data_query = "SELECT COUNT(*) FROM ORDER_DETAILS"
 
-            with self.expected_connection.cursor() as cursor:
+            with expected_connection.cursor() as cursor:
                 cursor.execute(check_data_query)
                 row_count = cursor.fetchone()[0]  # Fetch the first column (count)
 
@@ -713,7 +713,7 @@ class Activity:
                
         try:    
             if function in dir(solution_script):                
-                expected_result = solution_script.find_total_revenue_by_category(self.expected_connection)    
+                expected_result = solution_script.find_total_revenue_by_category(expected_connection)    
                 logging.info("expected_result from find_total_revenue_by_category method: {}".format(expected_result))            
             else:
                 logging.error("{} not found in solution_script".format(function))
@@ -725,7 +725,7 @@ class Activity:
                 signal.alarm(3)
                 try:
                     with contextlib.redirect_stdout(None):
-                        actual_result = main_script.find_total_revenue_by_category(self.expected_connection)    
+                        actual_result = main_script.find_total_revenue_by_category(expected_connection)    
                     logging.info("actual_result from find_total_revenue_by_category method: {}".format(actual_result))                
                 except Exception as exception:
                     return Activity.update_result_when_test_fails(
@@ -780,9 +780,9 @@ def start_tests(test_object):
     challenge_test.testcase_question_three(test_object)
     challenge_test.testcase_question_four(test_object)
     challenge_test.testcase_question_five(test_object)
-    # challenge_test.testcase_question_six(test_object)
-    # challenge_test.testcase_question_seven(test_object)
-    # challenge_test.testcase_question_eight(test_object)
+    challenge_test.testcase_question_six(test_object)
+    challenge_test.testcase_question_seven(test_object)
+    challenge_test.testcase_question_eight(test_object)
 
     result = json.dumps(test_object.result_final())
     return test_object.result_final()
