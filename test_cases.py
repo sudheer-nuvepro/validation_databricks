@@ -20,12 +20,14 @@ from azure.identity import ClientSecretCredential
 from azure.mgmt.resource import ResourceManagementClient
 from azure.mgmt.databricks import AzureDatabricksManagementClient
 from pyspark.sql import SparkSession
+
 from databricks import sql
 import subprocess
+
 import requests
 from requests.auth import HTTPBasicAuth
-from pyspark.sql.functions import col, explode, desc, split, trim
 
+# configure the logging module, can be used for debugging
 os.chdir("/home/labuser/")
 logging.basicConfig(filename = 'validate_script.log', level = logging.INFO, filemode = 'w', format='%(asctime)s - %(levelname)s - %(message)s', datefmt='%d-%b-%y %H:%M:%S')
 if os.path.exists("/tmp/scoring"):
@@ -86,28 +88,27 @@ class Activity:
     
     test_case_descriptions = {
             1 : " Verify data extraction from mongodb.",
-            2 : " Verify removal of specified rows.",
-            3 : " Verify data replacement in specified columns.",
-            4 : " Verify filtering of data in the dataframe.",
-            5 : " Verify Spark dataframe creation.",
-            6 : " Verify splitting of genre column data.",
-            7 : " Verify merging of dataframe.",
-            8 : " Verify Snowflake cursor."
+            2 : " Verify spark dataframe creation.",
+            3 : " Verify top 5 customers who palced most orders.",
+            4 : " Verify top 5 revenue products.",
+            5 : " Verify transforming data to create detailed orders.",
+            6 : " Verify Databricks Table resources.",
+            7 : " Verify data in Snowflake table.",
+            8 : " Verify total revenue by category."               
             }
 
     def __init__(self):
         # initialize the variables to be used across the testcases
-        self.expected_titles_collection,self.expected_credits_collection = None, None
-        self.actual_titles_collection,self.actual_credits_collection = None, None
-        self.expected_titles_df,self.expected_credits_df = None, None
-        self.actual_titles_df,self.actual_credits_df = None, None
-        self.expected_titles_spark_df,self.expected_credits_spark_df = None, None
-        self.actual_titles_spark_df,self.actual_credits_spark_df = None, None
-        self.expected_titles_genres_separated_spark_df = None
-        self.actual_titles_genres_separated_spark_df = None
-        self.expected_transformed_data = None
-        self.actual_transformed_data = None
-
+        self.expected_products_collection, self.expected_orders_collection, self.expected_order_details_collection = None,None,None
+        self.actual_products_collection, self.actual_orders_collection, self.actual_order_details_collection = None,None,None
+        self.expected_products_df, self.expected_orders_df, self.expected_order_details_df = None,None,None
+        self.actual_products_df, self.actual_orders_df, self.actual_order_details_df = None,None,None
+        self.expected_products_spark_df, self.expected_orders_spark_df, self.expected_orderdetails_spark_df = None,None,None
+        self.actual_products_spark_df, self.actual_orders_spark_df, self.actual_orderdetails_spark_df = None,None,None
+        self.actual_final_order_details_spark_df = None
+        self.expected_final_order_details_spark_df = None
+        
+        # Ensure the file exists
     def get_databricks_http_path(workspace_url, databricks_token):
         databricks_host = workspace_url  # Directly use the workspace URL
 
@@ -145,6 +146,21 @@ class Activity:
         )
 
         return conn
+
+
+    # # Retrieve Databricks credentials
+    # workspace_url, databricks_token = main_script.databricks_details()
+
+    # # Get Databricks Host and HTTP Path
+    # databricks_host, http_path = get_databricks_http_path(workspace_url, databricks_token)
+
+    # # Prepare connection parameters
+    # workspace_full_url = f"https://{workspace_url}"
+    # access_token = databricks_token
+
+    # # Establish connection
+    # conn = get_databricks_connection(workspace_full_url, http_path, access_token)
+
 
     @staticmethod
     def alarm_handler(signal_number, frame):  
@@ -230,7 +246,7 @@ class Activity:
     def testcase_question_one(self, test_object):
         testcase_description = Activity.test_case_descriptions[1]  
         test_object.update_pre_result(description=testcase_description)             
-        marks = 5
+        marks = 10
         marks_obtained = 0
         function = 'extract_data_from_mongodb'
         testcase = 'testcase_question_one'
@@ -241,8 +257,8 @@ class Activity:
         try:  
             if function in dir(solution_script):
                 with contextlib.redirect_stdout(None):
-                    self.expected_titles_collection, self.expected_credits_collection = solution_script.create_Mongo_Resources()
-                    self.expected_titles_df, self.expected_credits_df = solution_script.extract_data_from_mongodb(self.expected_titles_collection, self.expected_credits_collection )
+                    self.expected_products_collection,self.expected_orders_collection,self.expected_order_details_collection = solution_script.create_Mongo_Resources()
+                    self.expected_products_df, self.expected_orders_df, self.expected_order_details_df = solution_script.extract_data_from_mongodb(self.expected_products_collection,self.expected_orders_collection,self.expected_order_details_collection)
             else:
                 logging.error("{} not found in solution_script".format(function))
                 return Activity.update_result_when_test_fails(test_object=test_object,
@@ -253,8 +269,8 @@ class Activity:
                 signal.alarm(3) 
                 try:
                     with contextlib.redirect_stdout(None):
-                        self.actual_titles_collection, self.actual_credits_collection = main_script.create_Mongo_Resources()
-                        self.actual_titles_df, self.actual_credits_df = main_script.extract_data_from_mongodb(self.actual_titles_collection, self.actual_credits_collection)
+                        self.actual_products_collection,self.actual_orders_collection,self.actual_order_details_collection = main_script.create_Mongo_Resources()
+                        self.actual_products_df, self.actual_orders_df, self.actual_order_details_df = main_script.extract_data_from_mongodb(self.expected_products_collection,self.expected_orders_collection,self.expected_order_details_collection)
                 
                 except Exception as exception:
                     return Activity.update_result_when_test_fails(test_object=test_object,
@@ -267,14 +283,22 @@ class Activity:
                 return Activity.update_result_when_test_fails(test_object=test_object,
                         expected_outcome=expected_outcome, 
                         actual_outcome=Activity.function_not_found.format(function))
+            logging.info("Before try")                
             try:
-                # Use pandas assert_frame_equal to check equality
-                pd.testing.assert_frame_equal(self.expected_titles_df, self.actual_titles_df)
-                pd.testing.assert_frame_equal(self.expected_credits_df, self.actual_credits_df)
-                test_passed = True  # Set to True if no exception is raised
+                logging.info("Into try")           
+                if (self.actual_products_df is not None and self.actual_orders_df is not None and self.actual_order_details_df is not None):
+                    logging.info("Inside if condition")           
+                    # Use pandas assert_frame_equal to check equality
+                    pd.testing.assert_frame_equal(self.expected_products_df, self.actual_products_df)
+                    pd.testing.assert_frame_equal(self.expected_orders_df, self.actual_orders_df)
+                    pd.testing.assert_frame_equal(self.expected_order_details_df, self.actual_order_details_df) 
+                    test_passed = True  # Set to True if no exception is raised
+                else:
+                    logging.info("Inside else condition")
+                    test_passed = False
             except AssertionError as e:
                 test_passed = False  # Remain False if an exception is raised              
-            
+            logging.info("After Try")
             if test_passed:
                 logging.info("expected matches actual for {}".format(testcase))
                 return Activity.update_result_when_test_passes(test_object=test_object, expected_outcome=expected_outcome, 
@@ -292,103 +316,90 @@ class Activity:
                                                 actual_outcome="invalid operation",
                                                 reference=ref_if_failure_or_exception)
 
-    # Test Case to removal of specified rows  
-        
-    # Test case to validate data replacement in imdb_score and tmdb_score columns
-    def testcase_question_two(self, test_object):   
+    # Test Case to validate spark dataframe creation
+    def testcase_question_two(self, test_object):    
         testcase_description = Activity.test_case_descriptions[2]  
         test_object.update_pre_result(description=testcase_description)             
-        expected_result, actual_result = None, None
         marks = 10
         marks_obtained = 0
-        function = 'fill_mean_value'
+        function = 'create_spark_dataframe'
         testcase = 'testcase_question_two'
-        expected_outcome = 'Missing values in the specified columns should be replaced by their respective mean values.'
+        expected_outcome = 'Spark dataframe created must be as expected.'
         ref_if_failure_or_exception = "N/A"
         test_passed = False
-        
-        try:    
-            if function in dir(solution_script):                
-                self.expected_titles_df = solution_script.fill_mean_value(self.expected_titles_df)                
 
+        try: 
+            if function in dir(solution_script):
+                self.expected_products_spark_df, self.expected_orders_spark_df, self.expected_orderdetails_spark_df = solution_script.create_spark_dataframe(self.expected_products_df, self.expected_orders_df, self.expected_order_details_df)                
             else:
                 logging.error("{} not found in solution_script".format(function))
                 return Activity.update_result_when_test_fails(test_object=test_object,
                     expected_outcome=expected_outcome, actual_outcome=Activity.error_in_solution_script)
-                                 
+            
             if function in dir(main_script):
                 signal.signal(signal.SIGALRM, Activity.alarm_handler)
-                signal.alarm(3)
+                signal.alarm(3) 
                 try:
                     with contextlib.redirect_stdout(None):
-                        self.actual_titles_df = main_script.fill_mean_value(self.actual_titles_df)    
+                        self.actual_products_spark_df, self.actual_orders_spark_df, self.actual_orderdetails_spark_df = main_script.create_spark_dataframe(self.actual_products_df, self.actual_orders_df, self.actual_order_details_df)
                 except Exception as exception:
-                    return Activity.update_result_when_test_fails(
-                        test_object=test_object,expected_outcome=expected_outcome, 
-                        actual_outcome=Activity.error_occurred_during_function_execution.format(function, exception)
-                    )
+                    return Activity.update_result_when_test_fails(test_object=test_object,
+                        expected_outcome=expected_outcome, 
+                        actual_outcome=Activity.error_occurred_during_function_execution.format(function, exception))
                 finally:
                     signal.alarm(0)
             else:
                 logging.error("{} not found in user solution".format(function))
-                return Activity.update_result_when_test_fails(
-                    test_object=test_object,expected_outcome=expected_outcome, 
-                    actual_outcome=Activity.function_not_found.format(function)
-                )
+                return Activity.update_result_when_test_fails(test_object=test_object,
+                        expected_outcome=expected_outcome, 
+                        actual_outcome=Activity.function_not_found.format(function))
 
-            imdb_match = False
-            tmdb_match = False
+            if (self.actual_products_spark_df is not None and self.actual_orders_spark_df is not None and self.actual_orderdetails_spark_df is not None):
+                product_spark_equal = Activity.assert_spark_dataframes_equal(self.expected_products_spark_df, self.actual_products_spark_df)
+                order_spark_equal = Activity.assert_spark_dataframes_equal(self.expected_orders_spark_df, self.actual_orders_spark_df)
+                order_details_spark_equal = Activity.assert_spark_dataframes_equal(self.expected_orderdetails_spark_df, self.actual_orderdetails_spark_df)  
+            else:
+                product_spark_equal = order_spark_equal = order_details_spark_equal = False
 
-            if self.actual_titles_df is not None:
-                # Check if the values in the imdb_score and tmdb_score columns.
-                if np.allclose(self.actual_titles_df['imdb_score'], self.expected_titles_df['imdb_score']):
-                    imdb_match = True
-                if np.allclose(self.actual_titles_df['tmdb_score'], self.expected_titles_df['tmdb_score']):
-                    tmdb_match = True
-
-            if imdb_match and tmdb_match:
+            if(product_spark_equal and order_spark_equal and order_details_spark_equal):
                 test_passed = True
+            else:
+                test_passed = False
 
             if test_passed:
                 logging.info("expected matches actual for {}".format(testcase))
-                return Activity.update_result_when_test_passes(
-                    test_object=test_object, expected_outcome=expected_outcome, 
-                    actual_outcome='Missing values are replaced as expected.', 
-                    marks=marks, marks_obtained=marks
-                )
+                return Activity.update_result_when_test_passes(test_object=test_object, expected_outcome=expected_outcome, 
+                                                actual_outcome='store database has been created.', marks= marks, marks_obtained=marks)
             else:
                 logging.info("expected DOES NOT match actual for {}".format(testcase))
-                return Activity.update_result_when_test_fails(
-                    test_object=test_object, expected_outcome=expected_outcome, 
-                    actual_outcome='Missing values are not replaced as expected.',
-                    reference=ref_if_failure_or_exception, marks=marks
-                )
-                
+                return Activity.update_result_when_test_fails(test_object=test_object, expected_outcome=expected_outcome, 
+                                                actual_outcome='store database has not been created.',
+                                                reference=ref_if_failure_or_exception,  marks= marks)
+            
         except Exception as e:
             logging.info("{} : Error in validation {}".format(testcase, e))
             test_object.eval_message["testcase_question_two"] = str(e)
-            return Activity.update_result_when_test_fails(
-                test_object=test_object, expected_outcome=expected_outcome, 
-                actual_outcome=Activity.error_occurred_during_function_execution.format(function, e),
-                reference=ref_if_failure_or_exception, marks=marks
-            )
-
-    # Test case to validate data filtering
+            return Activity.update_result_when_test_fails(test_object=test_object, expected_outcome=expected_outcome, 
+                                                actual_outcome=Activity.invalid_import,
+                                                reference=ref_if_failure_or_exception,  marks= marks)  
+        
+    # Test case to validate top 5 customers
     def testcase_question_three(self, test_object):   
         testcase_description = Activity.test_case_descriptions[3]  
         test_object.update_pre_result(description=testcase_description)             
         expected_result, actual_result = None, None
-        marks = 10
+        marks = 5
         marks_obtained = 0
-        function = 'filter_df_score_morethan_8'
+        function = 'get_top5_customers_by_orders'
         testcase = 'testcase_question_three'
-        expected_outcome = 'Only titles with imbd and tmdb score more than 8 should be present in the dataframe.'
+        expected_outcome = 'Top 5 customers by Orders should be as expected.'
         ref_if_failure_or_exception = "N/A"
         test_passed = False
         
         try:    
             if function in dir(solution_script):                
-                self.expected_titles_df = solution_script.filter_df_score_morethan_8(self.expected_titles_df)    
+                expected_result = solution_script.get_top5_customers_by_orders(self.expected_orders_spark_df)                
+
             else:
                 logging.error("{} not found in solution_script".format(function))
                 return Activity.update_result_when_test_fails(test_object=test_object,
@@ -399,7 +410,7 @@ class Activity:
                 signal.alarm(3)
                 try:
                     with contextlib.redirect_stdout(None):
-                        self.actual_titles_df = main_script.filter_df_score_morethan_8(self.actual_titles_df)   
+                        actual_result = main_script.get_top5_customers_by_orders(self.actual_orders_spark_df)    
                 except Exception as exception:
                     return Activity.update_result_when_test_fails(
                         test_object=test_object,expected_outcome=expected_outcome, 
@@ -413,27 +424,22 @@ class Activity:
                     test_object=test_object,expected_outcome=expected_outcome, 
                     actual_outcome=Activity.function_not_found.format(function)
                 )
-            logging.info(self.expected_titles_df)
-            logging.info(self.actual_titles_df)
-            try:
-                # Use pandas assert_frame_equal to check equality
-                pd.testing.assert_frame_equal(self.expected_titles_df, self.actual_titles_df)
-                test_passed = True  # Set to True if no exception is raised
-            except AssertionError as e:
-                test_passed = False  # Remain False if an exception is raised  
-            
+
+            if (actual_result is not None):
+                test_passed = Activity.assert_spark_dataframes_equal(expected_result, actual_result)
+
             if test_passed:
                 logging.info("expected matches actual for {}".format(testcase))
                 return Activity.update_result_when_test_passes(
                     test_object=test_object, expected_outcome=expected_outcome, 
-                    actual_outcome='Data from the titles dataframe is filtered as expected.', 
+                    actual_outcome='Products collection in store Database is created.', 
                     marks=marks, marks_obtained=marks
                 )
             else:
                 logging.info("expected DOES NOT match actual for {}".format(testcase))
                 return Activity.update_result_when_test_fails(
                     test_object=test_object, expected_outcome=expected_outcome, 
-                    actual_outcome='Data from titles dataframe is not filtered as expected.',
+                    actual_outcome='Products collection in store Database is not created.',
                     reference=ref_if_failure_or_exception, marks=marks
                 )
                 
@@ -446,22 +452,91 @@ class Activity:
                 reference=ref_if_failure_or_exception, marks=marks
             )
 
-    # Test case to validate spark dataframe creation
-    def testcase_question_four(self, test_object):
-        testcase_description = Activity.test_case_descriptions[4]
+    # Test case to validate top 5 products
+    def testcase_question_four(self, test_object):   
+        testcase_description = Activity.test_case_descriptions[4]  
+        test_object.update_pre_result(description=testcase_description)             
+        expected_result, actual_result = None, None
+        marks = 5
+        marks_obtained = 0
+        function = 'calculate_top5_revenue_products'
+        testcase = 'testcase_question_four'
+        expected_outcome = 'Top 5 revenue products is as expected.'
+        ref_if_failure_or_exception = "N/A"
+        test_passed = False
+        
+        try:    
+            if function in dir(solution_script):                
+                expected_result = solution_script.calculate_top5_revenue_products(self.expected_products_spark_df,self.expected_orderdetails_spark_df)                
+            else:
+                logging.error("{} not found in solution_script".format(function))
+                return Activity.update_result_when_test_fails(test_object=test_object,
+                    expected_outcome=expected_outcome, actual_outcome=Activity.error_in_solution_script)
+                                 
+            if function in dir(main_script):
+                signal.signal(signal.SIGALRM, Activity.alarm_handler)
+                signal.alarm(3)
+                try:
+                    with contextlib.redirect_stdout(None):
+                        actual_result = main_script.calculate_top5_revenue_products(self.actual_products_spark_df,self.actual_orderdetails_spark_df)    
+                except Exception as exception:
+                    return Activity.update_result_when_test_fails(
+                        test_object=test_object,expected_outcome=expected_outcome, 
+                        actual_outcome=Activity.error_occurred_during_function_execution.format(function, exception)
+                    )
+                finally:
+                    signal.alarm(0)
+            else:
+                logging.error("{} not found in user solution".format(function))
+                return Activity.update_result_when_test_fails(
+                    test_object=test_object,expected_outcome=expected_outcome, 
+                    actual_outcome=Activity.function_not_found.format(function)
+                )
+
+            if (actual_result is not None):
+                test_passed = Activity.assert_spark_dataframes_equal(expected_result, actual_result)
+
+            if test_passed:
+                logging.info("expected matches actual for {}".format(testcase))
+                return Activity.update_result_when_test_passes(
+                    test_object=test_object, expected_outcome=expected_outcome, 
+                    actual_outcome='Top 5 revenue products is as expected.', 
+                    marks=marks, marks_obtained=marks
+                )
+            else:
+                logging.info("expected DOES NOT match actual for {}".format(testcase))
+                return Activity.update_result_when_test_fails(
+                    test_object=test_object, expected_outcome=expected_outcome, 
+                    actual_outcome='Top 5 revenue product is not as expected.',
+                    reference=ref_if_failure_or_exception, marks=marks
+                )
+                
+        except Exception as e:
+            logging.info("{} : Error in validation {}".format(testcase, e))
+            test_object.eval_message["testcase_question_four"] = str(e)
+            return Activity.update_result_when_test_fails(
+                test_object=test_object, expected_outcome=expected_outcome, 
+                actual_outcome=Activity.error_occurred_during_function_execution.format(function, e),
+                reference=ref_if_failure_or_exception, marks=marks
+            )
+
+    # Test case to validate transformed spark dataframe
+    def testcase_question_five(self, test_object):
+        testcase_description = Activity.test_case_descriptions[5]
         test_object.update_pre_result(description=testcase_description)
         marks = 10
         marks_obtained = 0
-        function = 'create_spark_dataframe'
-        testcase = 'testcase_question_four'
-        expected_outcome = "Spark Dataframe should be created from the given dataframe."
+        function = 'transform_order_details'
+        testcase = 'testcase_question_five'
+        expected_outcome = "Transformed Spark dataframe should be as expected."
         ref_if_failure_or_exception = "N/A"
         test_passed = False
 
         try:
             # Validate function existence in solution script
             if function in dir(solution_script):
-                self.expected_titles_spark_df,self.expected_credits_spark_df = solution_script.create_spark_dataframe(self.expected_titles_df,self.expected_credits_df)                
+                expected_result = solution_script.transform_order_details(self.expected_products_spark_df, self.expected_orders_spark_df, self.expected_orderdetails_spark_df)                
+                self.expected_final_order_details_spark_df = expected_result
             else:
                 logging.error("{} not found in solution_script".format(function))
                 return Activity.update_result_when_test_fails(test_object=test_object,
@@ -473,7 +548,8 @@ class Activity:
                 signal.alarm(3)
                 try:
                     with contextlib.redirect_stdout(None):
-                        self.actual_titles_spark_df,self.actual_credits_spark_df = main_script.create_spark_dataframe(self.actual_titles_df,self.actual_credits_df)    
+                        actual_result = main_script.transform_order_details(self.actual_products_spark_df, self.actual_orders_spark_df, self.actual_orderdetails_spark_df)    
+                    self.actual_final_order_details_spark_df = actual_result
                 except Exception as exception:
                     return Activity.update_result_when_test_fails(
                         test_object=test_object,expected_outcome=expected_outcome, 
@@ -488,22 +564,15 @@ class Activity:
                     actual_outcome=Activity.function_not_found.format(function)
                 )            
 
-            if (self.actual_titles_spark_df is not None and self.actual_credits_spark_df is not None):
-            #  compare both the datframes. if both credits and titles are equal the test is passed.
-                titles_spark_df_equal = Activity.assert_spark_dataframes_equal(self.expected_titles_spark_df, self.actual_titles_spark_df)
-                credits_spark_df_equal = Activity.assert_spark_dataframes_equal(self.expected_credits_spark_df, self.actual_credits_spark_df)
-            else:
-                titles_spark_df_equal = False
-                credits_spark_df_equal = False
-
-            test_passed = titles_spark_df_equal and credits_spark_df_equal
+            if (self.actual_final_order_details_spark_df!=None):
+                test_passed = Activity.assert_spark_dataframes_equal(self.expected_final_order_details_spark_df, self.actual_final_order_details_spark_df)
             
             if test_passed:
                 logging.info("Expected matches actual for {}".format(testcase))
                 return Activity.update_result_when_test_passes(
                     test_object=test_object,
                     expected_outcome=expected_outcome,
-                    actual_outcome='Spark dataframes are as expected.',
+                    actual_outcome='Transformed order details is as expected.',
                     marks=marks,
                     marks_obtained=marks
                 )
@@ -512,13 +581,13 @@ class Activity:
                 return Activity.update_result_when_test_fails(
                     test_object=test_object,
                     expected_outcome=expected_outcome,
-                    actual_outcome='Spark dataframes are not as expected.',
+                    actual_outcome='Transformed order details is not as expected.',
                     reference=ref_if_failure_or_exception,
                     marks=marks
                 )
         except Exception as e:
             logging.error("{} : Error in validation {}".format(testcase, e))
-            test_object.eval_message["testcase_question_four"] = str(e)
+            test_object.eval_message["testcase_question_five"] = str(e)
             return Activity.update_result_when_test_fails(
                 test_object=test_object,
                 expected_outcome=expected_outcome,
@@ -526,134 +595,14 @@ class Activity:
                 reference=ref_if_failure_or_exception,
                 marks=marks
             )
-
-    #Test Case to validate splitting of genre column data
-    def testcase_question_five(self, test_object):
+    def testcase_question_six(self, test_object):   
         testcase_description = Activity.test_case_descriptions[6]  
-        test_object.update_pre_result(description=testcase_description)             
-        marks = 15
-        marks_obtained = 0
-        function = 'get_titles_genres_separated_spark_df'
-        testcase = 'testcase_question_five'
-        expected_outcome = 'Genre column should be expanded and separate rows should be created for each of the genre.'
-        ref_if_failure_or_exception = "TBD"
-        test_passed = False
-        
-        try:  
-            if function in dir(solution_script):
-                self.expected_titles_genres_separated_spark_df = solution_script.get_titles_genres_separated_spark_df(self.expected_titles_spark_df)
-            else:
-                logging.error("{} not found in solution_script".format(function))
-                return Activity.update_result_when_test_fails(test_object=test_object,
-                    expected_outcome=expected_outcome, actual_outcome=Activity.error_in_solution_script)
-                      
-            if function in dir(main_script):
-                signal.signal(signal.SIGALRM, Activity.alarm_handler)
-                signal.alarm(3) 
-                try:
-                    with contextlib.redirect_stdout(None):
-                        self.actual_titles_genres_separated_spark_df = main_script.get_titles_genres_separated_spark_df(self.actual_titles_spark_df)
-                except Exception as exception:
-                    return Activity.update_result_when_test_fails(test_object=test_object,
-                        expected_outcome=expected_outcome, 
-                        actual_outcome=Activity.error_occurred_during_function_execution.format(function, exception))
-                finally:
-                    signal.alarm(0)
-            else:
-                logging.error("{} not found in user solution".format(function))
-                return Activity.update_result_when_test_fails(test_object=test_object,
-                        expected_outcome=expected_outcome, 
-                        actual_outcome=Activity.function_not_found.format(function))
-            
-            if (self.actual_titles_genres_separated_spark_df is not None and self.expected_titles_genres_separated_spark_df is not None):
-                test_passed = Activity.assert_spark_dataframes_equal(self.actual_titles_genres_separated_spark_df, self.expected_titles_genres_separated_spark_df)
-               
-            if test_passed:
-                logging.info("expected matches actual for {}".format(testcase))
-                return Activity.update_result_when_test_passes(test_object=test_object, expected_outcome=expected_outcome, 
-                                                actual_outcome='Genre data is split as expected.',marks=marks, marks_obtained= marks)
-            else:
-                logging.info("expected DOES NOT match actual for {}".format(testcase))
-                return Activity.update_result_when_test_fails(test_object=test_object, expected_outcome=expected_outcome, 
-                                                actual_outcome='Genre data is not split as expected.',
-                                                reference=ref_if_failure_or_exception,marks=marks)             
-        
-        except Exception as e:
-            logging.info("{} : Error in validation {}".format(testcase, e))
-            test_object.eval_message["testcase_question_five"] = str(e)
-            return Activity.update_result_when_test_fails(test_object=test_object, expected_outcome=expected_outcome, 
-                                                actual_outcome=Activity.invalid_operation,
-                                                reference=ref_if_failure_or_exception)
-    
-    # Testcase to validate merging of dataframes
-    def testcase_question_six(self, test_object):
-        testcase_description = Activity.test_case_descriptions[6] 
-        test_object.update_pre_result(description=testcase_description)             
-        marks = 10
-        marks_obtained = 0
-        function = 'get_transformed_data'
-        testcase = 'testcase_question_six'
-        expected_outcome = 'Dataframes must be merged as specified.'
-        ref_if_failure_or_exception = "N/A"
-        test_passed = False
-
-        try:  
-            if function in dir(solution_script):
-                self.expected_transformed_data = solution_script.get_transformed_data(self.expected_titles_genres_separated_spark_df,self.expected_credits_spark_df)
-            else:
-                logging.error("{} not found in solution_script".format(function))
-                return Activity.update_result_when_test_fails(test_object=test_object,
-                    expected_outcome=expected_outcome, actual_outcome=Activity.error_in_solution_script)
-                      
-            if function in dir(main_script):
-                signal.signal(signal.SIGALRM, Activity.alarm_handler)
-                signal.alarm(3) 
-                try:
-                    with contextlib.redirect_stdout(None):
-                        self.actual_transformed_data = main_script.get_transformed_data(self.actual_titles_genres_separated_spark_df,self.actual_credits_spark_df)
-                except Exception as exception:
-                    return Activity.update_result_when_test_fails(test_object=test_object,
-                        expected_outcome=expected_outcome, 
-                        actual_outcome=Activity.error_occurred_during_function_execution.format(function, exception))
-                finally:
-                    signal.alarm(0)
-            else:
-                logging.error("{} not found in user solution".format(function))
-                return Activity.update_result_when_test_fails(test_object=test_object,
-                        expected_outcome=expected_outcome, 
-                        actual_outcome=Activity.function_not_found.format(function))
-            
-            if (self.actual_transformed_data is not None):
-                test_passed = Activity.assert_spark_dataframes_equal(self.actual_transformed_data, self.expected_transformed_data)
-               
-            if test_passed:
-                logging.info("expected matches actual for {}".format(testcase))
-                return Activity.update_result_when_test_passes(test_object=test_object, expected_outcome=expected_outcome, 
-                                                actual_outcome='Dataframes are merged as expected.',marks=marks, marks_obtained= marks)
-            else:
-                logging.info("expected DOES NOT match actual for {}".format(testcase))
-                return Activity.update_result_when_test_fails(test_object=test_object, expected_outcome=expected_outcome, 
-                                                actual_outcome='Dataframes are not merged as expected.',
-                                                reference=ref_if_failure_or_exception,marks=marks) 
-        
-            
-        except Exception as e:
-            logging.info("{} : Error in validation {}".format(testcase, e))
-            test_object.eval_message["testcase_question_six"] = str(e)
-            return Activity.update_result_when_test_fails(
-                test_object=test_object, expected_outcome=expected_outcome, 
-                actual_outcome=Activity.error_occurred_during_function_execution.format(function, e),
-                reference=ref_if_failure_or_exception, marks=marks
-            )
-
-    def testcase_question_seven(self, test_object):   
-        testcase_description = Activity.test_case_descriptions[7]  
         test_object.update_pre_result(description=testcase_description)             
         expected_result, actual_result,result = None, None,None
         marks = 5
         marks_obtained = 0
-        testcase = 'testcase_question_seven'
-        expected_outcome = 'Titlesnew table should be created'
+        testcase = 'testcase_question_six'
+        expected_outcome = 'ORDER_DETAILS table should be created'
         ref_if_failure_or_exception = "N/A"
         test_passed = False
         
@@ -662,7 +611,7 @@ class Activity:
             workspaceurl ,access_token = main_script.databricks_details()
             databricks_host, http_path = Activity.get_databricks_http_path(workspaceurl, access_token)          
             expected_connection  = Activity.get_databricks_connection(workspaceurl, http_path, access_token) 
-            check_table_query = "SHOW TABLES LIKE 'Titlesnew'"
+            check_table_query = "SHOW TABLES LIKE 'ORDER_DETAILS'"
 
             with expected_connection.cursor() as cursor:
                 cursor.execute(check_table_query)
@@ -689,26 +638,26 @@ class Activity:
                 
         except Exception as e:
             logging.info("{} : Error in validation {}".format(testcase, e))
-            test_object.eval_message["testcase_question_seven"] = str(e)
+            test_object.eval_message["testcase_question_six"] = str(e)
             return Activity.update_result_when_test_fails(
                 test_object=test_object, expected_outcome=expected_outcome, 
                 actual_outcome=Activity.error_occurred_during_function_execution.format(function, e),
                 reference=ref_if_failure_or_exception, marks=marks
             )
-
-    #Test Case to validate Snowflake cursor
-    def testcase_question_eight(self, test_object):
-        testcase_description = Activity.test_case_descriptions[8]
+    
+    # Testcase to validate the snwoflake resources
+    def testcase_question_seven(self, test_object):
+        testcase_description = Activity.test_case_descriptions[7]
         test_object.update_pre_result(description=testcase_description)
         marks = 10
         marks_obtained = 0
-        testcase = 'testcase_question_eight'
-        expected_outcome = "Transformed data should be successfully loaded into the Titlesnew"
+        testcase = 'testcase_question_seven'
+        expected_outcome = "Data insertion to population table."
         ref_if_failure_or_exception = "N/A"
         test_passed = False
 
         try:
-            check_data_query = "SELECT COUNT(*) FROM Titlesnew"
+            check_data_query = "SELECT COUNT(*) FROM ORDER_DETAILS"
 
             with expected_connection.cursor() as cursor:
                 cursor.execute(check_data_query)
@@ -748,8 +697,79 @@ class Activity:
                 reference=ref_if_failure_or_exception,
                 marks=marks
             )
+     
+    # Test case to validate revenue by category
+    def testcase_question_eight(self, test_object):   
+        testcase_description = Activity.test_case_descriptions[8]  
+        test_object.update_pre_result(description=testcase_description)             
+        expected_result, actual_result = None, None
+        marks = 10
+        marks_obtained = 0
+        function = 'find_total_revenue_by_category'
+        testcase = 'testcase_question_eight'
+        expected_outcome = 'Revenue for each product category should be as expected.' 
+        ref_if_failure_or_exception = "N/A"
+        test_passed = False
+               
+        try:    
+            if function in dir(solution_script):                
+                expected_result = solution_script.find_total_revenue_by_category(expected_connection)    
+                logging.info("expected_result from find_total_revenue_by_category method: {}".format(expected_result))            
+            else:
+                logging.error("{} not found in solution_script".format(function))
+                return Activity.update_result_when_test_fails(test_object=test_object,
+                    expected_outcome=expected_outcome, actual_outcome=Activity.error_in_solution_script)
+                                 
+            if function in dir(main_script):
+                signal.signal(signal.SIGALRM, Activity.alarm_handler)
+                signal.alarm(3)
+                try:
+                    with contextlib.redirect_stdout(None):
+                        actual_result = main_script.find_total_revenue_by_category(expected_connection)    
+                    logging.info("actual_result from find_total_revenue_by_category method: {}".format(actual_result))                
+                except Exception as exception:
+                    return Activity.update_result_when_test_fails(
+                        test_object=test_object,expected_outcome=expected_outcome, 
+                        actual_outcome=Activity.error_occurred_during_function_execution.format(function, exception)
+                    )
+                finally:
+                    signal.alarm(0)
+            else:
+                logging.error("{} not found in user solution".format(function))
+                return Activity.update_result_when_test_fails(
+                    test_object=test_object,expected_outcome=expected_outcome, 
+                    actual_outcome=Activity.function_not_found.format(function)
+                )
+            
+            if expected_result == actual_result:
+                test_passed = True
+            else:
+                test_passed = False           
 
 
+            if test_passed:
+                logging.info("expected matches actual for {}".format(testcase))
+                return Activity.update_result_when_test_passes(
+                    test_object=test_object, expected_outcome=expected_outcome, 
+                    actual_outcome='Total Revenue is as expected.', 
+                    marks=marks, marks_obtained=marks
+                )
+            else:
+                logging.info("expected DOES NOT match actual for {}".format(testcase))
+                return Activity.update_result_when_test_fails(
+                    test_object=test_object, expected_outcome=expected_outcome, 
+                    actual_outcome='Total Revenue is not as expected.',
+                    reference=ref_if_failure_or_exception, marks=marks
+                )
+                
+        except Exception as e:
+            logging.info("{} : Error in validation {}".format(testcase, e))
+            test_object.eval_message["testcase_question_eight"] = str(e)
+            return Activity.update_result_when_test_fails(
+                test_object=test_object, expected_outcome=expected_outcome, 
+                actual_outcome=Activity.error_occurred_during_function_execution.format(function, e),
+                reference=ref_if_failure_or_exception, marks=marks
+            )
 
 import main_script, solution_script 
    
