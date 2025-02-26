@@ -20,10 +20,8 @@ from azure.identity import ClientSecretCredential
 from azure.mgmt.resource import ResourceManagementClient
 from azure.mgmt.databricks import AzureDatabricksManagementClient
 from pyspark.sql import SparkSession
-
 from databricks import sql
 import subprocess
-
 import requests
 from requests.auth import HTTPBasicAuth
 
@@ -93,7 +91,7 @@ class Activity:
             4 : " Verify top 5 revenue products.",
             5 : " Verify transforming data to create detailed orders.",
             6 : " Verify Databricks Table resources.",
-            7 : " Verify data in Snowflake table.",
+            7 : " Verify data in databricks table.",
             8 : " Verify total revenue by category."               
             }
 
@@ -147,19 +145,6 @@ class Activity:
 
         return conn
 
-
-    # # Retrieve Databricks credentials
-    # workspace_url, databricks_token = main_script.databricks_details()
-
-    # # Get Databricks Host and HTTP Path
-    # databricks_host, http_path = get_databricks_http_path(workspace_url, databricks_token)
-
-    # # Prepare connection parameters
-    # workspace_full_url = f"https://{workspace_url}"
-    # access_token = databricks_token
-
-    # # Establish connection
-    # conn = get_databricks_connection(workspace_full_url, http_path, access_token)
 
 
     @staticmethod
@@ -602,7 +587,7 @@ class Activity:
         marks = 5
         marks_obtained = 0
         testcase = 'testcase_question_six'
-        expected_outcome = 'ORDER_DETAILS table should be created'
+        expected_outcome = 'ORDER_DETAILS table should be created in Azure Databricks'
         ref_if_failure_or_exception = "N/A"
         test_passed = False
         
@@ -652,7 +637,7 @@ class Activity:
         marks = 10
         marks_obtained = 0
         testcase = 'testcase_question_seven'
-        expected_outcome = "Data insertion to population table."
+        expected_outcome = "Data insertion to ORDER_DETAILS table."
         ref_if_failure_or_exception = "N/A"
         test_passed = False
 
@@ -683,7 +668,7 @@ class Activity:
                 return Activity.update_result_when_test_fails(
                     test_object=test_object,
                     expected_outcome=expected_outcome,
-                    actual_outcome='data Insertion is not as expected.',
+                    actual_outcome='Data Insertion is not as expected.',
                     reference=ref_if_failure_or_exception,
                     marks=marks
                 )
@@ -707,7 +692,7 @@ class Activity:
         marks_obtained = 0
         function = 'find_total_revenue_by_category'
         testcase = 'testcase_question_eight'
-        expected_outcome = 'Revenue for each product category should be as expected.' 
+        expected_outcome = 'Revenue for each product category in ORDER_DETAILS should be as expected.' 
         ref_if_failure_or_exception = "N/A"
         test_passed = False
                
@@ -751,14 +736,14 @@ class Activity:
                 logging.info("expected matches actual for {}".format(testcase))
                 return Activity.update_result_when_test_passes(
                     test_object=test_object, expected_outcome=expected_outcome, 
-                    actual_outcome='Total Revenue is as expected.', 
+                    actual_outcome='Total Revenue by category is as expected.', 
                     marks=marks, marks_obtained=marks
                 )
             else:
                 logging.info("expected DOES NOT match actual for {}".format(testcase))
                 return Activity.update_result_when_test_fails(
                     test_object=test_object, expected_outcome=expected_outcome, 
-                    actual_outcome='Total Revenue is not as expected.',
+                    actual_outcome='Total Revenue by category is not as expected.',
                     reference=ref_if_failure_or_exception, marks=marks
                 )
                 
